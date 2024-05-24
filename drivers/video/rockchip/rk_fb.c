@@ -3888,6 +3888,7 @@ int rk_fb_disp_scale(u8 scale_x, u8 scale_y, u8 lcdc_id)
 	return 0;
 }
 
+#if !defined(CONFIG_FRAMEBUFFER_CONSOLE)
 #if defined(CONFIG_ION_ROCKCHIP)
 static int rk_fb_alloc_buffer_by_ion(struct fb_info *fbi,
 				     struct rk_lcdc_win *win,
@@ -3943,7 +3944,9 @@ err_share_dma_buf:
 	return -ENOMEM;
 }
 #endif
+#endif
 
+#if !defined(CONFIG_FRAMEBUFFER_CONSOLE)
 static int rk_fb_alloc_buffer(struct fb_info *fbi)
 {
 	struct rk_fb *rk_fb = platform_get_drvdata(fb_pdev);
@@ -4002,27 +4005,27 @@ static int rk_fb_alloc_buffer(struct fb_info *fbi)
 			else
 				fb_par->ion_hdl =
 				dev_drv_prmry->win[win_id_prmry]->area[0].ion_hdl;
-				fbi->screen_base =
-					ion_map_kernel(rk_fb->ion_client,
-						       fb_par->ion_hdl);
-				dev_drv->win[win_id]->area[0].ion_hdl =
-					fb_par->ion_hdl;
-				if (dev_drv->mmu_dev)
-					ret = ion_map_iommu(dev_drv->dev,
-							    rk_fb->ion_client,
-							    fb_par->ion_hdl,
-							    (unsigned long *)&phy_addr,
-							    (unsigned long *)&len);
-				else
-					ret = ion_phys(rk_fb->ion_client,
-						       fb_par->ion_hdl,
-						       &phy_addr, &len);
-				if (ret < 0) {
-					dev_err(fbi->dev, "ion map to get phy addr failed\n");
-					return -ENOMEM;
-				}
-				fbi->fix.smem_start = phy_addr;
-				fbi->fix.smem_len = len;
+			fbi->screen_base =
+				ion_map_kernel(rk_fb->ion_client,
+					       fb_par->ion_hdl);
+			dev_drv->win[win_id]->area[0].ion_hdl =
+				fb_par->ion_hdl;
+			if (dev_drv->mmu_dev)
+				ret = ion_map_iommu(dev_drv->dev,
+						    rk_fb->ion_client,
+						    fb_par->ion_hdl,
+						    (unsigned long *)&phy_addr,
+						    (unsigned long *)&len);
+			else
+				ret = ion_phys(rk_fb->ion_client,
+					       fb_par->ion_hdl,
+					       &phy_addr, &len);
+			if (ret < 0) {
+				dev_err(fbi->dev, "ion map to get phy addr failed\n");
+				return -ENOMEM;
+			}
+			fbi->fix.smem_start = phy_addr;
+			fbi->fix.smem_len = len;
 #else
 			fb_mem_virt = dma_alloc_writecombine(fbi->dev,
 							     fb_mem_size,
@@ -4054,6 +4057,7 @@ static int rk_fb_alloc_buffer(struct fb_info *fbi)
 		fbi->fix.smem_len);
 	return ret;
 }
+#endif
 
 #if 0
 static int rk_release_fb_buffer(struct fb_info *fbi)
@@ -4168,7 +4172,7 @@ static int init_lcdc_device_driver(struct rk_fb *rk_fb,
 }
 
 #ifdef CONFIG_LOGO_LINUX_BMP
-static struct linux_logo *bmp_logo;
+const struct linux_logo *bmp_logo;
 static int fb_prewine_bmp_logo(struct fb_info *info, int rotate)
 {
 	bmp_logo = fb_find_logo(24);
@@ -4181,7 +4185,7 @@ static int fb_prewine_bmp_logo(struct fb_info *info, int rotate)
 
 static void fb_show_bmp_logo(struct fb_info *info, int rotate)
 {
-	unsigned char *src = bmp_logo->data;
+	const unsigned char *src = bmp_logo->data;
 	unsigned char *dst = info->screen_base;
 	int i;
 	unsigned int needwidth = (*(src - 24) << 8) | (*(src - 23));
@@ -4237,9 +4241,13 @@ int rk_fb_register(struct rk_lcdc_driver *dev_drv,
 	struct fb_info *fbi;
 	struct rk_fb_par *fb_par = NULL;
 	int i = 0, ret = 0, index = 0;
+#if !defined(CONFIG_FRAMEBUFFER_CONSOLE)
 	unsigned long flags;
+#endif
 	char time_line_name[16];
+#if !defined(CONFIG_FRAMEBUFFER_CONSOLE)
 	int mirror = 0;
+#endif
 
 	if (rk_fb->num_lcdc == RK30_MAX_LCDC_SUPPORT)
 		return -ENXIO;

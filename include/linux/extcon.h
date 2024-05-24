@@ -30,12 +30,24 @@
 
 /*
  * Define the unique id of supported external connectors
+ * Origin: Android 4.4.126
  */
 #define EXTCON_NONE		0
+
+/*
+ * Define the type of supported external connectors
+ * Origin: Rockchip 4.4.126
+ */
+#define EXTCON_TYPE_USB		BIT(0)	/* USB connector */
+#define EXTCON_TYPE_CHG		BIT(1)	/* Charger connector */
+#define EXTCON_TYPE_JACK	BIT(2)	/* Jack connector */
+#define EXTCON_TYPE_DISP	BIT(3)	/* Display connector */
+#define EXTCON_TYPE_MISC	BIT(4)	/* Miscellaneous connector */
 
 /* USB external connector */
 #define EXTCON_USB		1
 #define EXTCON_USB_HOST		2
+#define EXTCON_USB_VBUS_EN	3
 
 /* Charging external connector */
 #define EXTCON_CHG_USB_SDP	5	/* Standard Downstream Port */
@@ -60,6 +72,7 @@
 #define EXTCON_DISP_MHL		41	/* Mobile High-Definition Link */
 #define EXTCON_DISP_DVI		42	/* Digital Visual Interface */
 #define EXTCON_DISP_VGA		43	/* Video Graphics Array */
+#define EXTCON_DISP_DP		44	/* Display Port */
 
 /* Miscellaneous external connector */
 #define EXTCON_DOCK		60
@@ -67,6 +80,74 @@
 #define EXTCON_MECHANICAL	62
 
 #define EXTCON_NUM		63
+
+/*
+ * Define the property of supported external connectors.
+ *
+ * When adding the new extcon property, they *must* have
+ * the type/value/default information. Also, you *have to*
+ * modify the EXTCON_PROP_[type]_START/END definitions
+ * which mean the range of the supported properties
+ * for each extcon type.
+ *
+ * The naming style of property
+ * : EXTCON_PROP_[type]_[property name]
+ *
+ * EXTCON_PROP_USB_[property name]	: USB property
+ * EXTCON_PROP_CHG_[property name]	: Charger property
+ * EXTCON_PROP_JACK_[property name]	: Jack property
+ * EXTCON_PROP_DISP_[property name]	: Display property
+ */
+
+/*
+ * Properties of EXTCON_TYPE_USB.
+ *
+ * - EXTCON_PROP_USB_VBUS
+ * @type:	integer (intval)
+ * @value:	0 (low) or 1 (high)
+ * @default:	0 (low)
+ * - EXTCON_PROP_USB_TYPEC_POLARITY
+ * @type:	integer (intval)
+ * @value:	0 (normal) or 1 (flip)
+ * @default:	0 (normal)
+ * - EXTCON_PROP_USB_SS (SuperSpeed)
+ * @type:       integer (intval)
+ * @value:      0 (USB/USB2) or 1 (USB3)
+ * @default:    0 (USB/USB2)
+ *
+ */
+#define EXTCON_PROP_USB_VBUS		0
+#define EXTCON_PROP_USB_TYPEC_POLARITY	1
+#define EXTCON_PROP_USB_SS		2
+
+#define EXTCON_PROP_USB_MIN		0
+#define EXTCON_PROP_USB_MAX		2
+#define EXTCON_PROP_USB_CNT	(EXTCON_PROP_USB_MAX - EXTCON_PROP_USB_MIN + 1)
+
+/* Properties of EXTCON_TYPE_CHG. */
+#define EXTCON_PROP_CHG_MIN		50
+#define EXTCON_PROP_CHG_MAX		50
+#define EXTCON_PROP_CHG_CNT	(EXTCON_PROP_CHG_MAX - EXTCON_PROP_CHG_MIN + 1)
+
+/* Properties of EXTCON_TYPE_JACK. */
+#define EXTCON_PROP_JACK_MIN		100
+#define EXTCON_PROP_JACK_MAX		100
+#define EXTCON_PROP_JACK_CNT (EXTCON_PROP_JACK_MAX - EXTCON_PROP_JACK_MIN + 1)
+
+/* Properties of EXTCON_TYPE_DISP. */
+#define EXTCON_PROP_DISP_MIN		150
+#define EXTCON_PROP_DISP_MAX		150
+#define EXTCON_PROP_DISP_CNT (EXTCON_PROP_DISP_MAX - EXTCON_PROP_DISP_MIN + 1)
+
+/*
+ * Define the type of property's value.
+ *
+ * Define the property's value as union type. Because each property
+ * would need the different data type to store it.
+ */
+union extcon_property_value {
+	int intval;	/* type : integer (intval) */
+};
 
 struct extcon_cable;
 
@@ -235,6 +316,12 @@ extern int extcon_register_notifier(struct extcon_dev *edev, unsigned int id,
 				    struct notifier_block *nb);
 extern int extcon_unregister_notifier(struct extcon_dev *edev, unsigned int id,
 				    struct notifier_block *nb);
+extern int devm_extcon_register_notifier(struct device *dev,
+				struct extcon_dev *edev, unsigned int id,
+				struct notifier_block *nb);
+extern void devm_extcon_unregister_notifier(struct device *dev,
+				struct extcon_dev *edev, unsigned int id,
+				struct notifier_block *nb);
 
 /*
  * Following API get the extcon device from devicetree.

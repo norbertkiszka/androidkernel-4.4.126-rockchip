@@ -30,6 +30,8 @@
 #define SIP_SHARE_MEM			0x82000009
 #define SIP_SIP_VERSION			0x8200000a
 #define SIP_REMOTECTL_CFG		0x8200000b
+#define PSCI_SIP_VPU_RESET		0x8200000c
+#define RK_SIP_SOC_BUS_DIV		0x8200000d
 
 /* Rockchip Sip version */
 #define SIP_IMPLEMENT_V1                (1)
@@ -56,6 +58,7 @@
 #define SIP_RET_INVALID_PARAMS		-3
 #define SIP_RET_INVALID_ADDRESS		-4
 #define SIP_RET_DENIED			-5
+#define SIP_RET_SET_RATE_TIMEOUT	-6
 
 /* SIP_UARTDBG_CFG64 call types */
 #define UARTDBG_CFG_INIT		0xf0
@@ -75,6 +78,7 @@
 #define SUSPEND_DEBUG_ENABLE		0x05
 #define APIOS_SUSPEND_CONFIG		0x06
 #define VIRTUAL_POWEROFF		0x07
+#define SUSPEND_WFI_TIME_MS		0x08
 
 /* SIP_REMOTECTL_CFG call types */
 #define	REMOTECTL_SET_IRQ		0xf0
@@ -106,6 +110,8 @@ struct arm_smccc_res sip_smc_dram(u32 arg0, u32 arg1, u32 arg2);
 struct arm_smccc_res sip_smc_request_share_mem(u32 page_num,
 					       share_page_type_t page_type);
 struct arm_smccc_res sip_smc_mcu_el3fiq(u32 arg0, u32 arg1, u32 arg2);
+struct arm_smccc_res sip_smc_vpu_reset(u32 arg0, u32 arg1, u32 arg2);
+struct arm_smccc_res sip_smc_get_suspend_info(u32 info);
 
 int sip_smc_set_suspend_mode(u32 ctrl, u32 config1, u32 config2);
 int sip_smc_virtual_poweroff(void);
@@ -113,6 +119,7 @@ int sip_smc_remotectl_config(u32 func, u32 data);
 
 int sip_smc_secure_reg_write(u32 addr_phy, u32 val);
 u32 sip_smc_secure_reg_read(u32 addr_phy);
+struct arm_smccc_res sip_smc_soc_bus_div(u32 arg0, u32 arg1, u32 arg2);
 
 /***************************fiq debugger **************************************/
 void sip_fiq_debugger_enable_fiq(bool enable, uint32_t tgt_cpu);
@@ -156,7 +163,19 @@ static inline struct arm_smccc_res sip_smc_mcu_el3fiq
 	return tmp;
 }
 
+static inline struct arm_smccc_res
+sip_smc_vpu_reset(u32 arg0, u32 arg1, u32 arg2)
+{
+	struct arm_smccc_res tmp = {0};
+	return tmp;
+}
+
 static inline int sip_smc_set_suspend_mode(u32 ctrl, u32 config1, u32 config2)
+{
+	return 0;
+}
+
+static inline int sip_smc_get_suspend_info(u32 info)
 {
 	return 0;
 }
@@ -165,6 +184,10 @@ static inline int sip_smc_virtual_poweroff(void) { return 0; }
 static inline int sip_smc_remotectl_config(u32 func, u32 data) { return 0; }
 static inline u32 sip_smc_secure_reg_read(u32 addr_phy) { return 0; }
 static inline int sip_smc_secure_reg_write(u32 addr_phy, u32 val) { return 0; }
+static inline int sip_smc_soc_bus_div(u32 arg0, u32 arg1, u32 arg2)
+{
+	return 0;
+}
 
 /***************************fiq debugger **************************************/
 static inline void sip_fiq_debugger_enable_fiq
@@ -196,6 +219,9 @@ struct sm_nsec_ctx {
 	u32 irq_spsr;
 	u32 irq_sp;
 	u32 irq_lr;
+	u32 fiq_spsr;
+	u32 fiq_sp;
+	u32 fiq_lr;
 	u32 svc_spsr;
 	u32 svc_sp;
 	u32 svc_lr;

@@ -206,6 +206,7 @@ enum {
 	IRQD_IRQ_INPROGRESS		= (1 << 18),
 	IRQD_WAKEUP_ARMED		= (1 << 19),
 	IRQD_FORWARDED_TO_VCPU		= (1 << 20),
+	IRQD_IRQ_STARTED		= (1 << 22),
 };
 
 #define __irqd_to_state(d)		((d)->common->state_use_accessors)
@@ -297,6 +298,11 @@ static inline void irqd_set_forwarded_to_vcpu(struct irq_data *d)
 static inline void irqd_clr_forwarded_to_vcpu(struct irq_data *d)
 {
 	__irqd_to_state(d) &= ~IRQD_FORWARDED_TO_VCPU;
+}
+
+static inline bool irqd_is_started(struct irq_data *d)
+{
+	return __irqd_to_state(d) & IRQD_IRQ_STARTED;
 }
 
 static inline irq_hw_number_t irqd_to_hwirq(struct irq_data *d)
@@ -517,6 +523,10 @@ static inline void irq_set_chip_and_handler(unsigned int irq, struct irq_chip *c
 }
 
 extern int irq_set_percpu_devid(unsigned int irq);
+extern int irq_set_percpu_devid_partition(unsigned int irq,
+					  const struct cpumask *affinity);
+extern int irq_get_percpu_devid_partition(unsigned int irq,
+					  struct cpumask *affinity);
 
 extern void
 __irq_set_handler(unsigned int irq, irq_flow_handler_t handle, int is_chained,

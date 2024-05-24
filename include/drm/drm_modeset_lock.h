@@ -139,6 +139,8 @@ struct drm_modeset_acquire_ctx *
 drm_modeset_legacy_acquire_ctx(struct drm_crtc *crtc);
 
 int drm_modeset_lock_all_crtcs(struct drm_device *dev,
-		struct drm_modeset_acquire_ctx *ctx);
+		struct drm_modeset_acquire_ctx *ctx); // Android 4.4.126
+int drm_modeset_lock_all_ctx(struct drm_device *dev,
+			     struct drm_modeset_acquire_ctx *ctx); // Rockchip 4.4.126
 
 #endif /* DRM_MODESET_LOCK_H_ */
