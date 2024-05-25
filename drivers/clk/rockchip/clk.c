@@ -122,7 +122,6 @@ struct rockchip_clk_frac {
 	const struct clk_ops			*mux_ops;
 	int					mux_frac_idx;
 
-	bool					rate_change_remuxed;
 	int					rate_change_idx;
 };
 
@@ -143,18 +142,6 @@ static int rockchip_clk_frac_notifier_cb(struct notifier_block *nb,
 		frac->rate_change_idx = frac->mux_ops->get_parent(&frac_mux->hw);
 		if (frac->rate_change_idx != frac->mux_frac_idx) {
 			frac->mux_ops->set_parent(&frac_mux->hw, frac->mux_frac_idx);
-			frac->rate_change_remuxed = 1;
-		}
-	} else if (event == POST_RATE_CHANGE) {
-		/*
-		 * The POST_RATE_CHANGE notifier runs directly after the
-		 * divider clock is set in clk_change_rate, so we'll have
-		 * remuxed back to the original parent before clk_change_rate
-		 * reaches the mux itself.
-		 */
-		if (frac->rate_change_remuxed) {
-			frac->mux_ops->set_parent(&frac_mux->hw, frac->rate_change_idx);
-			frac->rate_change_remuxed = 0;
 		}
 	}
 
@@ -165,25 +152,37 @@ static int rockchip_clk_frac_notifier_cb(struct notifier_block *nb,
  * fractional divider must set that denominator is 20 times larger than
  * numerator to generate precise clock frequency.
  */
-void rockchip_fractional_approximation(struct clk_hw *hw,
-				       unsigned long rate,
-				       unsigned long *parent_rate,
-				       unsigned long *m,
-				       unsigned long *n)
+static void rockchip_fractional_approximation(struct clk_hw *hw,
+		unsigned long rate, unsigned long *parent_rate,
+		unsigned long *m, unsigned long *n)
 {
 	struct clk_fractional_divider *fd = to_clk_fd(hw);
 	unsigned long p_rate, p_parent_rate;
 	struct clk_hw *p_parent;
 	unsigned long scale;
+	u32 div;
 
 	p_rate = clk_hw_get_rate(clk_hw_get_parent(hw));
-	if ((rate * 20 > p_rate) && (p_rate % rate != 0)) {
+	if (((rate * 20 > p_rate) && (p_rate % rate != 0)) ||
+	    (fd->max_prate && fd->max_prate < p_rate)) {
 		p_parent = clk_hw_get_parent(clk_hw_get_parent(hw));
-		p_parent_rate = clk_hw_get_rate(p_parent);
-		*parent_rate = p_parent_rate;
+		if (!p_parent) {
+			*parent_rate = p_rate;
+		} else {
+			p_parent_rate = clk_hw_get_rate(p_parent);
+			*parent_rate = p_parent_rate;
+			if (fd->max_prate && p_parent_rate > fd->max_prate) {
+				div = DIV_ROUND_UP(p_parent_rate,
+						   fd->max_prate);
+				*parent_rate = p_parent_rate / div;
+			}
+		}
+
 		if (*parent_rate < rate * 20) {
 			pr_err("%s parent_rate(%ld) is low than rate(%ld)*20, fractional div is not allowed\n",
 			       clk_hw_get_name(hw), *parent_rate, rate);
+			*m = 0;
+			*n = 1;
 			return;
 		}
 	}
@@ -209,7 +208,7 @@ static struct clk *rockchip_clk_register_frac_branch(
 		void __iomem *base, int muxdiv_offset, u8 div_flags,
 		int gate_offset, u8 gate_shift, u8 gate_flags,
 		unsigned long flags, struct rockchip_clk_branch *child,
-		spinlock_t *lock)
+		unsigned long max_prate, spinlock_t *lock)
 {
 	struct rockchip_clk_frac *frac;
 	struct clk *clk;
@@ -250,6 +249,7 @@ static struct clk *rockchip_clk_register_frac_branch(
 	div->nmask = GENMASK(div->nwidth - 1, 0) << div->nshift;
 	div->lock = lock;
 	div->approximation = rockchip_fractional_approximation;
+	div->max_prate = max_prate;
 	div_ops = &clk_fractional_divider_ops;
 
 	clk = clk_register_composite(NULL, name, parent_names, num_parents,
@@ -394,6 +394,8 @@ struct rockchip_clk_provider * __init rockchip_clk_init(struct device_node *np,
 	spin_lock_init(&ctx->lock);
 	ctx->grf = syscon_regmap_lookup_by_phandle(ctx->cru_node,
 						   "rockchip,grf");
+	ctx->boost = syscon_regmap_lookup_by_phandle(ctx->cru_node,
+						   "rockchip,boost");
 
 	return ctx;
 
@@ -437,7 +439,8 @@ void __init rockchip_clk_register_plls(struct rockchip_clk_provider *ctx,
 				list->con_offset, grf_lock_offset,
 				list->lock_shift, list->mode_offset,
 				list->mode_shift, list->rate_table,
-				list->flags, list->pll_flags);
+				list->flags, list->pll_flags,
+				list->boost_enabled);
 		if (IS_ERR(clk)) {
 			pr_err("%s: failed to register clock %s\n", __func__,
 				list->name);
@@ -497,7 +500,7 @@ void __init rockchip_clk_register_branches(
 				ctx->reg_base, list->muxdiv_offset, list->div_flags,
 				list->gate_offset, list->gate_shift,
 				list->gate_flags, flags, list->child,
-				&ctx->lock);
+				list->max_prate, &ctx->lock);
 			break;
 		case branch_gate:
 			flags |= CLK_SET_RATE_PARENT;

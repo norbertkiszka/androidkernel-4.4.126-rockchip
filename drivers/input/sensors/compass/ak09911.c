@@ -257,7 +257,7 @@ static int sensor_report_value(struct i2c_client *client)
 		return -3;
 	}
 #endif
-	/* ï¿½ï¿½ï¿½ï¿½ï¿½Ø»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½. */
+	/* »¥³âµØ»º´æÊý¾Ý. */
 	mutex_lock(&sensor->data_mutex);
 	memcpy(sensor->sensor_data, buffer, sensor->ops->read_len);
 	mutex_unlock(&sensor->data_mutex);
@@ -339,7 +339,6 @@ static int compass_dev_open(struct inode *inode, struct file *file)
 	struct sensor_private_data* sensor =
 		(struct sensor_private_data *)i2c_get_clientdata(this_client);
 	int result = 0;
-	sensor = sensor;
 	DBG("%s\n",__func__);
 
 	return result;
@@ -351,7 +350,6 @@ static int compass_dev_release(struct inode *inode, struct file *file)
 	struct sensor_private_data* sensor =
 		(struct sensor_private_data *)i2c_get_clientdata(this_client);
 	int result = 0;
-	sensor = sensor;
 	DBG("%s\n",__func__);
 
 	return result;
@@ -792,3 +790,5 @@ static void __exit compass_akm09911_exit(void)
 
 module_init(compass_akm09911_init);
 module_exit(compass_akm09911_exit);
+
+

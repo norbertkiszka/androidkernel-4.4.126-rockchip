@@ -159,7 +159,7 @@ static void *vb2_dc_alloc(void *alloc_ctx, unsigned long size,
 		kfree(buf);
 		return ERR_PTR(-ENOMEM);
 	}
-	
+
 	if (!dma_get_attr(DMA_ATTR_NO_KERNEL_MAPPING, &buf->attrs))
 		buf->vaddr = buf->cookie;
 
@@ -729,22 +729,6 @@ const struct vb2_mem_ops vb2_dma_contig_memops = {
 };
 EXPORT_SYMBOL_GPL(vb2_dma_contig_memops);
 
-// Android 4.4.126
-void *vb2_dma_contig_init_ctx(struct device *dev)
-{
-	struct vb2_dc_conf *conf;
-
-	conf = kzalloc(sizeof *conf, GFP_KERNEL);
-	if (!conf)
-		return ERR_PTR(-ENOMEM);
-
-	conf->dev = dev;
-
-	return conf;
-}
-EXPORT_SYMBOL_GPL(vb2_dma_contig_init_ctx);
-
-// Rockchip 4.4.126
 void *vb2_dma_contig_init_ctx_attrs(struct device *dev,
 				    struct dma_attrs *attrs)
 {

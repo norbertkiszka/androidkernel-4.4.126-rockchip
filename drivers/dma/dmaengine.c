@@ -265,8 +265,11 @@ static void dma_chan_put(struct dma_chan *chan)
 	module_put(dma_chan_to_owner(chan));
 
 	/* This channel is not in use anymore, free it */
-	if (!chan->client_count && chan->device->device_free_chan_resources)
+	if (!chan->client_count && chan->device->device_free_chan_resources) {
+		/* Make sure all operations have completed */
+		dmaengine_synchronize(chan);
 		chan->device->device_free_chan_resources(chan);
+	}
 
 	/* If the channel is used via a DMA request router, free the mapping */
 	if (chan->router && chan->router->route_free) {
@@ -492,6 +495,7 @@ int dma_get_slave_caps(struct dma_chan *chan, struct dma_slave_caps *caps)
 	caps->src_addr_widths = device->src_addr_widths;
 	caps->dst_addr_widths = device->dst_addr_widths;
 	caps->directions = device->directions;
+	caps->max_burst = device->max_burst;
 	caps->residue_granularity = device->residue_granularity;
 
 	/*
@@ -511,7 +515,7 @@ static struct dma_chan *private_candidate(const dma_cap_mask_t *mask,
 {
 	struct dma_chan *chan;
 
-	if (!__dma_device_satisfies_mask(dev, mask)) {
+	if (mask && !__dma_device_satisfies_mask(dev, mask)) {
 		pr_debug("%s: wrong capabilities\n", __func__);
 		return NULL;
 	}

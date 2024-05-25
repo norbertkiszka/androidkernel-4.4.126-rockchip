@@ -73,6 +73,9 @@ static int drm_vblank_offdelay = 5000;    /* Default to 5000 msecs. */
 module_param_named(vblankoffdelay, drm_vblank_offdelay, int, 0600);
 module_param_named(timestamp_precision_usec, drm_timestamp_precision, int, 0600);
 module_param_named(timestamp_monotonic, drm_timestamp_monotonic, int, 0600);
+MODULE_PARM_DESC(vblankoffdelay, "Delay until vblank irq auto-disable [msecs] (0: never disable, <0: disable immediately)");
+MODULE_PARM_DESC(timestamp_precision_usec, "Max. error on timestamps [usecs]");
+MODULE_PARM_DESC(timestamp_monotonic, "Use monotonic timestamps");
 
 static void store_vblank(struct drm_device *dev, unsigned int pipe,
 			 u32 vblank_count_inc,
@@ -1038,17 +1041,14 @@ static void send_vblank_event(struct drm_device *dev,
 		struct drm_pending_vblank_event *e,
 		unsigned long seq, struct timeval *now)
 {
-	assert_spin_locked(&dev->event_lock);
-
 	e->event.sequence = seq;
 	e->event.tv_sec = now->tv_sec;
 	e->event.tv_usec = now->tv_usec;
 
-	list_add_tail(&e->base.link,
-		      &e->base.file_priv->event_list);
-	wake_up_interruptible(&e->base.file_priv->event_wait);
 	trace_drm_vblank_event_delivered(e->base.pid, e->pipe,
 					 e->event.sequence);
+
+	drm_send_event_locked(dev, &e->base);
 }
 
 /**
@@ -1098,6 +1098,7 @@ EXPORT_SYMBOL(drm_arm_vblank_event);
 void drm_crtc_arm_vblank_event(struct drm_crtc *crtc,
 			       struct drm_pending_vblank_event *e)
 {
+	e->event.crtc_id = crtc->base.id;
 	drm_arm_vblank_event(crtc->dev, drm_crtc_index(crtc), e);
 }
 EXPORT_SYMBOL(drm_crtc_arm_vblank_event);
@@ -1144,6 +1145,7 @@ EXPORT_SYMBOL(drm_send_vblank_event);
 void drm_crtc_send_vblank_event(struct drm_crtc *crtc,
 				struct drm_pending_vblank_event *e)
 {
+	e->event.crtc_id = crtc->base.id;
 	drm_send_vblank_event(crtc->dev, drm_crtc_index(crtc), e);
 }
 EXPORT_SYMBOL(drm_crtc_send_vblank_event);

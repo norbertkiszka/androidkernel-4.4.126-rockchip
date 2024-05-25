@@ -12,6 +12,7 @@
 #ifndef _RT5640_H
 #define _RT5640_H
 
+#include <linux/clk.h>
 #include <sound/rt5640.h>
 
 /* Info */
@@ -177,6 +178,8 @@
 #define RT5640_EQ_GN_HIP2			0xb2
 #define RT5640_EQ_PRE_VOL			0xb3
 #define RT5640_EQ_PST_VOL			0xb4
+/* General Control */
+#define RT5640_GEN_CTRL1			0xfa
 
 /* global definition */
 #define RT5640_L_MUTE				(0x1 << 15)
@@ -2035,6 +2038,10 @@ enum {
 #define RT5640_HEADSET_DET	BIT(1)
 #define RT5640_HEADPHO_DET	BIT(2)
 
+/* General Control1 (0xfa) */
+#define RT5640_M_MAMIX_L			(0x1 << 13)
+#define RT5640_M_MAMIX_R			(0x1 << 12)
+
 /* System Clock Source */
 #define RT5640_SCLK_S_MCLK	0
 #define RT5640_SCLK_S_PLL1	1
@@ -2083,6 +2090,7 @@ struct rt5640_priv {
 	struct snd_soc_codec *codec;
 	struct rt5640_platform_data pdata;
 	struct regmap *regmap;
+	struct clk *mclk;
 
 	int sysclk;
 	int sysclk_src;
