@@ -24,6 +24,7 @@
 #include <asm/asm-offsets.h>
 #include <asm/hwcap.h>
 #include <asm/pgtable.h>
+#include <asm/pgtable-hwdef.h>
 #include <asm/cpufeature.h>
 #include <asm/alternative.h>
 
@@ -63,58 +64,58 @@ ENTRY(cpu_do_suspend)
 	mrs	x2, tpidr_el0
 	mrs	x3, tpidrro_el0
 	mrs	x4, contextidr_el1
-	mrs	x5, mair_el1
-	mrs	x6, cpacr_el1
-	mrs	x7, ttbr1_el1
-	mrs	x8, tcr_el1
-	mrs	x9, vbar_el1
-	mrs	x10, mdscr_el1
-	mrs	x11, oslsr_el1
-	mrs	x12, sctlr_el1
-	mrs	x13, tpidr_el1
-	mrs	x14, sp_el0
+	mrs	x5, cpacr_el1
+	mrs	x6, tcr_el1
+	mrs	x7, vbar_el1
+	mrs	x8, mdscr_el1
+	mrs	x9, oslsr_el1
+	mrs	x10, sctlr_el1
+	mrs	x11, tpidr_el1
+	mrs	x12, sp_el0
 	stp	x2, x3, [x0]
-	stp	x4, x5, [x0, #16]
-	stp	x6, x7, [x0, #32]
-	stp	x8, x9, [x0, #48]
-	stp	x10, x11, [x0, #64]
-	stp	x12, x13, [x0, #80]
-	str	x14, [x0, #96]
+	stp	x4, xzr, [x0, #16]
+	stp	x5, x6, [x0, #32]
+	stp	x7, x8, [x0, #48]
+	stp	x9, x10, [x0, #64]
+	stp	x11, x12, [x0, #80]
 	ret
 ENDPROC(cpu_do_suspend)
 
 /**
  * cpu_do_resume - restore CPU register context
  *
- * x0: Physical address of context pointer
- * x1: ttbr0_el1 to be restored
- *
- * Returns:
- *	sctlr_el1 value in x0
+ * x0: Address of context pointer
  */
+	.pushsection ".idmap.text", "ax"
 ENTRY(cpu_do_resume)
-	/*
-	 * Invalidate local tlb entries before turning on MMU
-	 */
-	tlbi	vmalle1
 	ldp	x2, x3, [x0]
 	ldp	x4, x5, [x0, #16]
-	ldp	x6, x7, [x0, #32]
-	ldp	x8, x9, [x0, #48]
-	ldp	x10, x11, [x0, #64]
-	ldp	x12, x13, [x0, #80]
-	ldr	x14, [x0, #96]
+	ldp	x6, x8, [x0, #32]
+	ldp	x9, x10, [x0, #48]
+	ldp	x11, x12, [x0, #64]
+	ldp	x13, x14, [x0, #80]
 	msr	tpidr_el0, x2
 	msr	tpidrro_el0, x3
 	msr	contextidr_el1, x4
-	msr	mair_el1, x5
 	msr	cpacr_el1, x6
-	msr	ttbr0_el1, x1
-	msr	ttbr1_el1, x7
-	tcr_set_idmap_t0sz x8, x7
+
+	/* Don't change t0sz here, mask those bits when restoring */
+	mrs	x5, tcr_el1
+	bfi	x8, x5, TCR_T0SZ_OFFSET, TCR_TxSZ_WIDTH
+
 	msr	tcr_el1, x8
 	msr	vbar_el1, x9
+
+	/*
+	 * __cpu_setup() cleared MDSCR_EL1.MDE and friends, before unmasking
+	 * debug exceptions. By restoring MDSCR_EL1 here, we may take a debug
+	 * exception. Mask them until local_dbg_restore() in cpu_suspend()
+	 * resets them.
+	 */
+	disable_dbg
 	msr	mdscr_el1, x10
+
+	msr	sctlr_el1, x12
 	msr	tpidr_el1, x13
 	msr	sp_el0, x14
 	/*
@@ -123,11 +124,10 @@ ENTRY(cpu_do_resume)
 	ubfx	x11, x11, #1, #1
 	msr	oslar_el1, x11
 	reset_pmuserenr_el0 x0			// Disable PMU access from EL0
-	mov	x0, x12
-	dsb	nsh		// Make sure local tlb invalidation completed
 	isb
 	ret
 ENDPROC(cpu_do_resume)
+	.popsection
 #endif
 
 /*
@@ -185,6 +185,7 @@ ENDPROC(idmap_cpu_replace_ttbr1)
  *	Initialise the processor for turning the MMU on.  Return in x0 the
  *	value of the SCTLR_EL1 register.
  */
+	.pushsection ".idmap.text", "ax"
 ENTRY(__cpu_setup)
 	tlbi	vmalle1				// Invalidate local TLB
 	dsb	nsh
@@ -270,3 +271,4 @@ ENDPROC(__cpu_setup)
 crval:
 	.word	0xfcffffff			// clear
 	.word	0x34d5d91d			// set
+	.popsection

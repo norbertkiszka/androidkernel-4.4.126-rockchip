@@ -149,6 +149,8 @@ void machine_restart(char *cmd)
 	local_irq_disable();
 	smp_send_stop();
 
+	do_kernel_i2c_restart(cmd);
+
 	/*
 	 * UpdateCapsule() depends on the system being reset via
 	 * ResetSystem().
@@ -182,7 +184,7 @@ static void show_data(unsigned long addr, int nbytes, const char *name)
 	 * don't attempt to dump non-kernel addresses or
 	 * values that are probably just small negative numbers
 	 */
-	if (addr < PAGE_OFFSET || addr > -256UL)
+	if (addr < VA_START || addr > -256UL)
 		return;
 
 	printk("\n%s: %#lx:\n", name, addr);
@@ -268,13 +270,6 @@ void show_regs(struct pt_regs * regs)
 {
 	printk("\n");
 	__show_regs(regs);
-}
-
-/*
- * Free current thread data structures etc..
- */
-void exit_thread(void)
-{
 }
 
 static void tls_thread_flush(void)
