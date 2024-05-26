@@ -1874,11 +1874,11 @@ static int sdhci_card_busy(struct mmc_host *mmc)
 	u32 present_state;
 
 	sdhci_runtime_pm_get(host);
-	/* Check whether DAT[3:0] is 0000 */
+	/* Check whether DAT[0] is 0 */
 	present_state = sdhci_readl(host, SDHCI_PRESENT_STATE);
 	sdhci_runtime_pm_put(host);
 
-	return !(present_state & SDHCI_DATA_LVL_MASK);
+	return !(present_state & SDHCI_DATA_0_LVL_MASK);
 }
 
 static int sdhci_prepare_hs400_tuning(struct mmc_host *mmc, struct mmc_ios *ios)
@@ -2027,9 +2027,9 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 
 		spin_unlock_irqrestore(&host->lock, flags);
 		/* Wait for Buffer Read Ready interrupt */
-		wait_event_interruptible_timeout(host->buf_ready_int,
-					(host->tuning_done == 1),
-					msecs_to_jiffies(50));
+		wait_event_timeout(host->buf_ready_int,
+				   (host->tuning_done == 1),
+				   msecs_to_jiffies(50));
 		spin_lock_irqsave(&host->lock, flags);
 
 		if (!host->tuning_done) {
@@ -2740,7 +2740,6 @@ int sdhci_suspend_host(struct sdhci_host *host)
 		free_irq(host->irq, host);
 	} else {
 		sdhci_enable_irq_wakeups(host);
-		enable_irq_wake(host->irq);
 	}
 	return 0;
 }
@@ -2776,7 +2775,6 @@ int sdhci_resume_host(struct sdhci_host *host)
 			return ret;
 	} else {
 		sdhci_disable_irq_wakeups(host);
-		disable_irq_wake(host->irq);
 	}
 
 	sdhci_enable_card_detection(host);
