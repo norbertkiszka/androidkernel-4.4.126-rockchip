@@ -2222,8 +2222,8 @@ static int nvme_kthread(void *data)
 							csts & NVME_CSTS_CFS) {
 				if (!__nvme_reset(dev)) {
 					dev_warn(dev->dev,
-						"Failed status: %x, reset controller\n",
-						readl(&dev->bar->csts));
+						"Failed status: 0x%x, reset controller\n",
+						csts);
 				}
 				continue;
 			}
@@ -2295,6 +2295,11 @@ static void nvme_alloc_ns(struct nvme_dev *dev, unsigned nsid)
 	disk->queue = ns->queue;
 	disk->driverfs_dev = dev->device;
 	disk->flags = GENHD_FL_EXT_DEVT;
+#ifdef CONFIG_ARCH_ROCKCHIP
+	disk->is_rk_disk = true;
+#else
+	disk->is_rk_disk = false;
+#endif
 	sprintf(disk->disk_name, "nvme%dn%d", dev->instance, nsid);
 
 	/*

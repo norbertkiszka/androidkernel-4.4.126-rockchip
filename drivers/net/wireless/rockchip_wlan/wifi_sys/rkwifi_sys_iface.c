@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -65,11 +66,6 @@ static ssize_t wifi_chip_read(struct class *cls, struct class_attribute *attr, c
         if(type == WIFI_AP6354) {
             count = sprintf(_buf, "%s", "AP6354");
             printk("Current WiFi chip is AP6354.\n");
-        }
-
-        if(type == WIFI_AP6356S) {
-            count = sprintf(_buf, "%s", "AP6356S");
-            printk("Current WiFi chip is AP6356S.\n");
         }
 
 	if(type == WIFI_AP6441) {

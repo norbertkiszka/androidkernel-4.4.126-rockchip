@@ -43,6 +43,7 @@
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
 #endif
+#include <linux/soc/rockchip/rk_vendor_storage.h>
 
 #if 0
 #define DBG(x...)   printk(KERN_INFO "[WLAN_RFKILL]: "x)
@@ -92,6 +93,8 @@ static const char wlan_name[] =
 		"ap6476"
 #elif defined(CONFIG_AP6493)
 		"ap6493"
+#elif defined(CONFIG_MVL88W8977)
+        "mvl88w8977"
 #else
         "wlan_default"
 #endif
@@ -121,8 +124,6 @@ int get_wifi_chip_type(void)
         type = WIFI_AP6335;
     } else if (strcmp(wifi_chip_type_string, "ap6354") == 0) {
         type = WIFI_AP6354;
-    } else if (strcmp(wifi_chip_type_string, "ap6356s") == 0) {
-        type = WIFI_AP6356S;
     } else if (strcmp(wifi_chip_type_string, "ap6441") == 0) {
         type = WIFI_AP6441;
     } else if (strcmp(wifi_chip_type_string, "ap6476") == 0) {
@@ -155,6 +156,8 @@ int get_wifi_chip_type(void)
         type = WIFI_RTL8812AU;                        
     } else if (strcmp(wifi_chip_type_string, "esp8089") == 0) {
         type = WIFI_ESP8089;
+    } else if (strcmp(wifi_chip_type_string, "mvl88w8977") == 0) {
+        type = WIFI_MVL88W8977;
     } else {
         type = WIFI_AP6210;
     }
@@ -431,6 +434,22 @@ int rockchip_wifi_get_oob_irq(void)
 }
 EXPORT_SYMBOL(rockchip_wifi_get_oob_irq);
 
+int rockchip_wifi_get_oob_irq_flag(void)
+{
+	struct rfkill_wlan_data *mrfkill = g_rfkill;
+	struct rksdmmc_gpio *wifi_int_irq;
+	int gpio_flags = -1;
+
+	if (mrfkill) {
+		wifi_int_irq = &mrfkill->pdata->wifi_int_b;
+		if (gpio_is_valid(wifi_int_irq->io))
+			gpio_flags = wifi_int_irq->enable;
+	}
+
+	return gpio_flags;
+}
+EXPORT_SYMBOL(rockchip_wifi_get_oob_irq_flag);
+
 /**************************************************************************
  *
  * Wifi Reset Func
@@ -451,87 +470,76 @@ EXPORT_SYMBOL(rockchip_wifi_reset);
 #include <linux/errno.h>
 u8 wifi_custom_mac_addr[6] = {0,0,0,0,0,0};
 
-static void rockchip_wifi_get_sn(char *buf)
+//#define RANDOM_ADDRESS_SAVE
+static int get_wifi_addr_vendor(unsigned char *addr)
 {
-       memset(buf, 0, 512);
-       //GetSNSectorInfo(char * pbuf);
+	int ret;
+	int count = 5;
 
-       return ;
-}
-
-//#define ENABLE_WIFI_RAND_MAC
-#ifdef ENABLE_WIFI_RAND_MAC
-#define WIFI_RAND_MAC_FILE "/data/misc/wifi_rand_mac"
-
-static int rockchip_wifi_rand_mac_addr(unsigned char *buf)
-{
-	struct file *fp; 
-	loff_t pos;
-	mm_segment_t fs;
-	char mac_buf[20] = {0};
-
-	LOG("%s\n", __func__);
-	fp = filp_open(WIFI_RAND_MAC_FILE, O_RDONLY, 0);
-	if (fp == NULL || IS_ERR(fp)) {
-		fp = filp_open(WIFI_RAND_MAC_FILE, O_RDWR | O_CREAT, 0644);
-		if (fp == NULL || IS_ERR(fp)) {
-			LOG("%s: create %s failed.\n", __func__, WIFI_RAND_MAC_FILE);
+	while (count-- > 0) {
+		if (is_rk_vendor_ready())
+			break;
+		/* sleep 500ms wait rk vendor driver ready */
+		msleep(500);
+	}
+	ret = rk_vendor_read(WIFI_MAC_ID, addr, 6);
+	if (ret != 6 || is_zero_ether_addr(addr)) {
+		LOG("%s: rk_vendor_read wifi mac address failed (%d)\n",
+		    __func__, ret);
+#ifdef RANDOM_ADDRESS_SAVE
+		random_ether_addr(addr);
+		LOG("%s: generate random wifi mac address: "
+		    "%02x:%02x:%02x:%02x:%02x:%02x\n",
+		    __func__, addr[0], addr[1], addr[2],
+		    addr[3], addr[4], addr[5]);
+		ret = rk_vendor_write(WIFI_MAC_ID, addr, 6);
+		if (ret != 0) {
+			LOG("%s: rk_vendor_write"
+				" wifi mac address failed (%d)\n",
+				__func__, ret);
+			memset(addr, 0, 6);
 			return -1;
 		}
-		fs = get_fs();
-		set_fs(KERNEL_DS);
-		random_ether_addr(wifi_custom_mac_addr);
-		pos = 0;
-		vfs_write(fp, wifi_custom_mac_addr, 6, &pos);
-		filp_close(fp, NULL);  
+#else
+		return -1;
+#endif
 	} else {
-		fs = get_fs();
-		set_fs(KERNEL_DS);
-		pos = 0;
-		vfs_read(fp, wifi_custom_mac_addr, 6, &pos);
-		filp_close(fp, NULL); 
+		LOG("%s: rk_vendor_read wifi mac address: "
+		    "%02x:%02x:%02x:%02x:%02x:%02x\n",
+		    __func__, addr[0], addr[1], addr[2],
+		    addr[3], addr[4], addr[5]);
 	}
-	sprintf(mac_buf,"%02x:%02x:%02x:%02x:%02x:%02x",wifi_custom_mac_addr[0],wifi_custom_mac_addr[1],
-	wifi_custom_mac_addr[2],wifi_custom_mac_addr[3],wifi_custom_mac_addr[4],wifi_custom_mac_addr[5]);
-	LOG("random wifi_custom_mac_addr=[%s]\n", mac_buf);    
 	return 0;
 }
-#endif
 
 int rockchip_wifi_mac_addr(unsigned char *buf)
 {
-    char mac_buf[20] = {0};
-    LOG("%s: enter.\n", __func__);
+	char mac_buf[20] = {0};
 
-    // from vflash
-    if(is_zero_ether_addr(wifi_custom_mac_addr)) {
-        int i;
-        char *tempBuf = kmalloc(512, GFP_KERNEL);
-        if(tempBuf) {
-            rockchip_wifi_get_sn(tempBuf);
-            for (i = 445; i <= 450; i++)
-                wifi_custom_mac_addr[i-445] = tempBuf[i];
-            kfree(tempBuf);
-        } else {
-            return -1;
-        }
-    }
+	LOG("%s: enter.\n", __func__);
 
-    sprintf(mac_buf,"%02x:%02x:%02x:%02x:%02x:%02x",wifi_custom_mac_addr[0],wifi_custom_mac_addr[1],
-    wifi_custom_mac_addr[2],wifi_custom_mac_addr[3],wifi_custom_mac_addr[4],wifi_custom_mac_addr[5]);
-    LOG("falsh wifi_custom_mac_addr=[%s]\n", mac_buf);
+	// from vendor storage
+	if (is_zero_ether_addr(wifi_custom_mac_addr)) {
+		if (get_wifi_addr_vendor(wifi_custom_mac_addr) != 0)
+			return -1;
+	}
 
-#ifdef ENABLE_WIFI_RAND_MAC
-    rockchip_wifi_rand_mac_addr(buf);
-#endif
-    if (is_valid_ether_addr(wifi_custom_mac_addr)) {
-        if (!strncmp(wifi_chip_type_string, "rtl", 3))
-            wifi_custom_mac_addr[0] &= ~0x2; // for p2p
-    } else {
-        LOG("This mac address is not valid, ignored...\n");
-        return -1;
-    }
-    memcpy(buf, wifi_custom_mac_addr, 6);
+	sprintf(mac_buf, "%02x:%02x:%02x:%02x:%02x:%02x",
+		wifi_custom_mac_addr[0], wifi_custom_mac_addr[1],
+		wifi_custom_mac_addr[2], wifi_custom_mac_addr[3],
+		wifi_custom_mac_addr[4], wifi_custom_mac_addr[5]);
+	LOG("falsh wifi_custom_mac_addr=[%s]\n", mac_buf);
+
+	if (is_valid_ether_addr(wifi_custom_mac_addr)) {
+		if (!strncmp(wifi_chip_type_string, "rtl", 3))
+			wifi_custom_mac_addr[0] &= ~0x2; // for p2p
+	} else {
+		LOG("This mac address is not valid, ignored...\n");
+		return -1;
+	}
+
+	memcpy(buf, wifi_custom_mac_addr, 6);
+
 	return 0;
 }
 EXPORT_SYMBOL(rockchip_wifi_mac_addr);
@@ -662,7 +670,7 @@ static int wlan_platdata_parse_dt(struct device *dev,
         gpio = of_get_named_gpio_flags(node, "WIFI,host_wake_irq", 0, &flags);
         if (gpio_is_valid(gpio)){
 			data->wifi_int_b.io = gpio;
-			data->wifi_int_b.enable = flags;
+			data->wifi_int_b.enable = !flags;
 			LOG("%s: get property: WIFI,host_wake_irq = %d, flags = %d.\n", __func__, gpio, flags);
         } else data->wifi_int_b.io = -1;
 	}

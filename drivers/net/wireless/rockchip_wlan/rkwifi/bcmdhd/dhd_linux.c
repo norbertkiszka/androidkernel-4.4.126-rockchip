@@ -5029,6 +5029,7 @@ dhd_start_xmit(struct sk_buff *skb, struct net_device *net)
 #endif /* DHD_PCIE_RUNTIMEPM */
 
 	DHD_GENERAL_LOCK(&dhd->pub, flags);
+#ifdef BCMPCIE
 	if (DHD_BUS_CHECK_SUSPEND_OR_SUSPEND_IN_PROGRESS(&dhd->pub)) {
 		DHD_ERROR(("%s: bus is in suspend(%d) or suspending(0x%x) state!!\n",
 			__FUNCTION__, dhd->pub.busstate, dhd->pub.dhd_bus_busy_state));
@@ -5047,7 +5048,12 @@ dhd_start_xmit(struct sk_buff *skb, struct net_device *net)
 		return NETDEV_TX_BUSY;
 #endif
 	}
-
+#else
+	if (DHD_BUS_CHECK_SUSPEND_OR_SUSPEND_IN_PROGRESS(&dhd->pub)) {
+		DHD_ERROR(("%s: bus is in suspend(%d) or suspending(0x%x) state!!\n",
+			__FUNCTION__, dhd->pub.busstate, dhd->pub.dhd_bus_busy_state));
+	}
+#endif
 	DHD_OS_WAKE_LOCK(&dhd->pub);
 	DHD_PERIM_LOCK_TRY(DHD_FWDER_UNIT(dhd), lock_taken);
 
@@ -13136,7 +13142,6 @@ dhd_reboot_callback(struct notifier_block *this, unsigned long code, void *unuse
 
 static int wifi_init_thread(void *data)
 {
-	OSL_SLEEP(500);
 	dhd_module_init();
 
 	return 0;
@@ -13675,19 +13680,11 @@ dhd_os_sdunlock_txq(dhd_pub_t *pub)
 void
 dhd_os_sdlock_rxq(dhd_pub_t *pub)
 {
-	dhd_info_t *dhd;
-
-	dhd = (dhd_info_t *)(pub->info);
-	spin_lock_bh(&dhd->rxqlock);
 }
 
 void
 dhd_os_sdunlock_rxq(dhd_pub_t *pub)
 {
-	dhd_info_t *dhd;
-
-	dhd = (dhd_info_t *)(pub->info);
-	spin_unlock_bh(&dhd->rxqlock);
 }
 
 static void
@@ -14157,8 +14154,10 @@ dhd_dev_get_feature_set(struct net_device *dev)
 			feature_set |= WIFI_FEATURE_D2D_RTT;
 	}
 #ifdef RTT_SUPPORT
-	feature_set |= WIFI_FEATURE_D2D_RTT;
-	feature_set |= WIFI_FEATURE_D2AP_RTT;
+	if (dhd->rtt_supported) {
+		feature_set |= WIFI_FEATURE_D2D_RTT;
+		feature_set |= WIFI_FEATURE_D2AP_RTT;
+	}
 #endif /* RTT_SUPPORT */
 #ifdef LINKSTAT_SUPPORT
 	feature_set |= WIFI_FEATURE_LINKSTAT;
@@ -14168,8 +14167,8 @@ dhd_dev_get_feature_set(struct net_device *dev)
 	if (dhd_is_pno_supported(dhd)) {
 		feature_set |= WIFI_FEATURE_PNO;
 #ifdef GSCAN_SUPPORT
-		feature_set |= WIFI_FEATURE_GSCAN;
-		feature_set |= WIFI_FEATURE_HAL_EPNO;
+//		feature_set |= WIFI_FEATURE_GSCAN;
+//		feature_set |= WIFI_FEATURE_HAL_EPNO;
 #endif /* GSCAN_SUPPORT */
 	}
 #endif /* PNO_SUPPORT */

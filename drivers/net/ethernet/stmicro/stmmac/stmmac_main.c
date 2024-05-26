@@ -165,7 +165,7 @@ static void stmmac_clk_csr_set(struct stmmac_priv *priv)
 {
 	u32 clk_rate;
 
-	clk_rate = clk_get_rate(priv->stmmac_clk);
+	clk_rate = clk_get_rate(priv->pclk);
 
 	/* Platform provided default clk_csr would be assumed valid
 	 * for all other cases except for the below mentioned ones.
@@ -1627,6 +1627,9 @@ static void stmmac_check_ether_addr(struct stmmac_priv *priv)
 	if (!is_valid_ether_addr(priv->dev->dev_addr)) {
 		priv->hw->mac->get_umac_addr(priv->hw,
 					     priv->dev->dev_addr, 0);
+		if (likely(priv->plat->get_eth_addr))
+			priv->plat->get_eth_addr(priv->plat->bsp_priv,
+				priv->dev->dev_addr);
 		if (!is_valid_ether_addr(priv->dev->dev_addr))
 			eth_hw_addr_random(priv->dev);
 		pr_info("%s: device MAC address %pM\n", priv->dev->name,
@@ -1751,9 +1754,11 @@ static int stmmac_hw_setup(struct net_device *dev, bool init_ptp)
 	}
 
 #ifdef CONFIG_DEBUG_FS
-	ret = stmmac_init_fs(dev);
-	if (ret < 0)
-		pr_warn("%s: failed debugFS registration\n", __func__);
+	if (init_ptp) {
+		ret = stmmac_init_fs(dev);
+		if (ret < 0)
+			pr_warn("%s: failed debugFS registration\n", __func__);
+	}
 #endif
 	/* Start the ball rolling... */
 	pr_debug("%s: DMA RX/TX processes started...\n", dev->name);
@@ -2887,7 +2892,7 @@ int stmmac_dvr_probe(struct device *device,
 	}
 	clk_prepare_enable(priv->stmmac_clk);
 
-	priv->pclk = devm_clk_get(priv->device, "pclk");
+	priv->pclk = devm_clk_get(priv->device, "pclk_mac");
 	if (IS_ERR(priv->pclk)) {
 		if (PTR_ERR(priv->pclk) == -EPROBE_DEFER) {
 			ret = -EPROBE_DEFER;
@@ -2998,12 +3003,13 @@ EXPORT_SYMBOL_GPL(stmmac_dvr_probe);
 
 /**
  * stmmac_dvr_remove
- * @ndev: net device pointer
+ * @dev: device pointer
  * Description: this function resets the TX/RX processes, disables the MAC RX/TX
  * changes the link status, releases the DMA descriptor rings.
  */
-int stmmac_dvr_remove(struct net_device *ndev)
+int stmmac_dvr_remove(struct device *dev)
 {
+	struct net_device *ndev = dev_get_drvdata(dev);
 	struct stmmac_priv *priv = netdev_priv(ndev);
 
 	pr_info("%s:\n\tremoving driver", __func__);
@@ -3029,13 +3035,14 @@ EXPORT_SYMBOL_GPL(stmmac_dvr_remove);
 
 /**
  * stmmac_suspend - suspend callback
- * @ndev: net device pointer
+ * @dev: device pointer
  * Description: this is the function to suspend the device and it is called
  * by the platform driver to stop the network queue, release the resources,
  * program the PMT register (for WoL), clean and release driver resources.
  */
-int stmmac_suspend(struct net_device *ndev)
+int stmmac_suspend(struct device *dev)
 {
+	struct net_device *ndev = dev_get_drvdata(dev);
 	struct stmmac_priv *priv = netdev_priv(ndev);
 	unsigned long flags;
 
@@ -3045,12 +3052,12 @@ int stmmac_suspend(struct net_device *ndev)
 	if (priv->phydev)
 		phy_stop(priv->phydev);
 
-	spin_lock_irqsave(&priv->lock, flags);
-
 	netif_device_detach(ndev);
 	netif_stop_queue(ndev);
 
 	napi_disable(&priv->napi);
+
+	spin_lock_irqsave(&priv->lock, flags);
 
 	/* Stop TX/RX DMA */
 	priv->hw->dma->stop_tx(priv->ioaddr);
@@ -3078,19 +3085,18 @@ EXPORT_SYMBOL_GPL(stmmac_suspend);
 
 /**
  * stmmac_resume - resume callback
- * @ndev: net device pointer
+ * @dev: device pointer
  * Description: when resume this function is invoked to setup the DMA and CORE
  * in a usable state.
  */
-int stmmac_resume(struct net_device *ndev)
+int stmmac_resume(struct device *dev)
 {
+	struct net_device *ndev = dev_get_drvdata(dev);
 	struct stmmac_priv *priv = netdev_priv(ndev);
 	unsigned long flags;
 
 	if (!netif_running(ndev))
 		return 0;
-
-	spin_lock_irqsave(&priv->lock, flags);
 
 	/* Power Down bit, into the PM register, is cleared
 	 * automatically as soon as a magic packet or a Wake-up frame
@@ -3099,7 +3105,9 @@ int stmmac_resume(struct net_device *ndev)
 	 * from another devices (e.g. serial console).
 	 */
 	if (device_may_wakeup(priv->device)) {
+		spin_lock_irqsave(&priv->lock, flags);
 		priv->hw->mac->pmt(priv->hw, 0);
+		spin_unlock_irqrestore(&priv->lock, flags);
 		priv->irq_wake = 0;
 	} else {
 		pinctrl_pm_select_default_state(priv->device);
@@ -3111,7 +3119,7 @@ int stmmac_resume(struct net_device *ndev)
 			stmmac_mdio_reset(priv->mii);
 	}
 
-	netif_device_attach(ndev);
+	spin_lock_irqsave(&priv->lock, flags);
 
 	priv->cur_rx = 0;
 	priv->dirty_rx = 0;
@@ -3126,6 +3134,8 @@ int stmmac_resume(struct net_device *ndev)
 	napi_enable(&priv->napi);
 
 	netif_start_queue(ndev);
+
+	netif_device_attach(ndev);
 
 	spin_unlock_irqrestore(&priv->lock, flags);
 

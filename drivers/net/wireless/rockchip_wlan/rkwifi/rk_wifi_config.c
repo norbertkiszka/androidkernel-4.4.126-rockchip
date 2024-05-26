@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /* rk_wifi_config.c
  *
  * RKWIFI driver version.
@@ -90,11 +91,6 @@ if (chip == WIFI_AP6335) {
 if (chip == WIFI_AP6354) {
     sprintf(fw, "%s%s", ANDROID_FW_PATH, "fw_bcm4354a1_ag.bin");
         sprintf(nvram, "%s%s", ANDROID_FW_PATH, "nvram_ap6354.txt");
-}
-
-if (chip == WIFI_AP6356S) {
-    sprintf(fw, "%s%s", ANDROID_FW_PATH, "fw_bcm4356a2_ag.bin");
-        sprintf(nvram, "%s%s", ANDROID_FW_PATH, "nvram_ap6356s.txt");
 }
 
 if (chip == WIFI_AP6476) {
