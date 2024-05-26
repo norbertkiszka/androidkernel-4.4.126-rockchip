@@ -28,6 +28,7 @@
 #include <linux/slab.h>
 #include <linux/dmi.h>
 #include <linux/dma-mapping.h>
+#include <linux/usb/quirks.h>
 
 #include "xhci.h"
 #include "xhci-trace.h"
@@ -740,6 +741,15 @@ void xhci_stop(struct usb_hcd *hcd)
 void xhci_shutdown(struct usb_hcd *hcd)
 {
 	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+
+	if (!hcd->rh_registered)
+		return;
+
+	/* Don't poll the roothubs on shutdown */
+	clear_bit(HCD_FLAG_POLL_RH, &hcd->flags);
+	del_timer_sync(&hcd->rh_timer);
+	clear_bit(HCD_FLAG_POLL_RH, &xhci->shared_hcd->flags);
+	del_timer_sync(&xhci->shared_hcd->rh_timer);
 
 	if (xhci->quirks & XHCI_SPURIOUS_REBOOT)
 		usb_disable_xhci_ports(to_pci_dev(hcd->self.controller));
@@ -1549,7 +1559,8 @@ int xhci_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 	if (ret || !urb->hcpriv)
 		goto done;
 	temp = readl(&xhci->op_regs->status);
-	if (temp == 0xffffffff || (xhci->xhc_state & XHCI_STATE_HALTED)) {
+	if (temp == 0xffffffff || (xhci->xhc_state & XHCI_STATE_HALTED) ||
+	    (xhci->xhc_state & XHCI_STATE_REMOVING)) {
 		xhci_dbg_trace(xhci, trace_xhci_dbg_cancel_urb,
 				"HW died, freeing TD.");
 		urb_priv = urb->hcpriv;
@@ -3639,7 +3650,8 @@ void xhci_free_dev(struct usb_hcd *hcd, struct usb_device *udev)
 	/* Don't disable the slot if the host controller is dead. */
 	state = readl(&xhci->op_regs->status);
 	if (state == 0xffffffff || (xhci->xhc_state & XHCI_STATE_DYING) ||
-			(xhci->xhc_state & XHCI_STATE_HALTED)) {
+			(xhci->xhc_state & XHCI_STATE_HALTED) ||
+			(xhci->xhc_state & XHCI_STATE_REMOVING)) {
 		xhci_free_virt_device(xhci, udev->slot_id);
 		spin_unlock_irqrestore(&xhci->lock, flags);
 		kfree(command);
@@ -4881,6 +4893,10 @@ int xhci_gen_setup(struct usb_hcd *hcd, xhci_get_quirks_t get_quirks)
 		/* xHCI private pointer was set in xhci_pci_probe for the second
 		 * registered roothub.
 		 */
+		if (xhci->quirks & XHCI_DIS_AUTOSUSPEND)
+			xhci->shared_hcd->self.root_hub->quirks |=
+				USB_QUIRK_AUTO_SUSPEND;
+
 		return 0;
 	}
 
@@ -4901,7 +4917,7 @@ int xhci_gen_setup(struct usb_hcd *hcd, xhci_get_quirks_t get_quirks)
 		xhci->hcc_params2 = readl(&xhci->cap_regs->hcc_params2);
 	xhci_print_registers(xhci);
 
-	xhci->quirks = quirks;
+	xhci->quirks |= quirks;
 
 	get_quirks(dev, xhci);
 

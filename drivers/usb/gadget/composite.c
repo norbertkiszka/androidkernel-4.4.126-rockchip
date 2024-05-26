@@ -1778,14 +1778,19 @@ unknown:
 				}
 				break;
 			}
-			req->length = value;
-			req->context = cdev;
-			req->zero = value < w_length;
-			value = composite_ep0_queue(cdev, req, GFP_ATOMIC);
-			if (value < 0) {
-				DBG(cdev, "ep_queue --> %d\n", value);
-				req->status = 0;
-				composite_setup_complete(gadget->ep0, req);
+
+			if (value >= 0) {
+				req->length = value;
+				req->context = cdev;
+				req->zero = value < w_length;
+				value = composite_ep0_queue(cdev, req,
+							    GFP_ATOMIC);
+				if (value < 0) {
+					DBG(cdev, "ep_queue --> %d\n", value);
+					req->status = 0;
+					composite_setup_complete(gadget->ep0,
+								 req);
+				}
 			}
 			return value;
 		}
@@ -2071,6 +2076,7 @@ void composite_dev_cleanup(struct usb_composite_dev *cdev)
 
 		kfree(cdev->os_desc_req->buf);
 		usb_ep_free_request(cdev->gadget->ep0, cdev->os_desc_req);
+		cdev->os_desc_req = NULL;
 	}
 	if (cdev->req) {
 		if (cdev->setup_pending)
@@ -2078,6 +2084,7 @@ void composite_dev_cleanup(struct usb_composite_dev *cdev)
 
 		kfree(cdev->req->buf);
 		usb_ep_free_request(cdev->gadget->ep0, cdev->req);
+		cdev->req = NULL;
 	}
 	cdev->next_string_id = 0;
 	device_remove_file(&cdev->gadget->dev, &dev_attr_suspended);
