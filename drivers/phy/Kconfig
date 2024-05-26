@@ -159,6 +159,7 @@ config TWL4030_USB
 	tristate "TWL4030 USB Transceiver Driver"
 	depends on TWL4030_CORE && REGULATOR_TWL4030 && USB_MUSB_OMAP2PLUS
 	depends on USB_SUPPORT
+	depends on USB_GADGET || !USB_GADGET # if USB_GADGET=m, this can't 'y'
 	select GENERIC_PHY
 	select USB_PHY
 	help
@@ -313,13 +314,6 @@ config PHY_QCOM_IPQ806X_SATA
 	depends on OF
 	select GENERIC_PHY
 
-config PHY_ROCKCHIP_USB
-	tristate "Rockchip USB2 PHY Driver"
-	depends on ARCH_ROCKCHIP && OF
-	select GENERIC_PHY
-	help
-	  Enable this to support the Rockchip USB 2.0 PHY.
-
 config PHY_ST_SPEAR1310_MIPHY
 	tristate "ST SPEAR1310-MIPHY driver"
 	select GENERIC_PHY
@@ -390,5 +384,7 @@ config PHY_CYGNUS_PCIE
 	help
 	  Enable this to support the Broadcom Cygnus PCIe PHY.
 	  If unsure, say N.
+
+source "drivers/phy/rockchip/Kconfig"
 
 endmenu

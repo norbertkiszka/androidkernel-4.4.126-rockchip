@@ -7,6 +7,7 @@
 #ifndef __ASM_PLAT_IOVMM_H
 #define __ASM_PLAT_IOVMM_H
 
+#include <uapi/asm-generic/errno.h>
 #include <linux/list.h>
 #include <linux/atomic.h>
 #include <linux/spinlock.h>
